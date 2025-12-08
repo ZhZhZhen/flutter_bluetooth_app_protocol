@@ -151,3 +151,6 @@ app.*.symbols
 .python-version
 .gclient_previous_custom_vars
 .gclient_previous_sync_commits
+
+# 屏蔽修改的本地蓝牙库
+./bluetooth_low_energy
