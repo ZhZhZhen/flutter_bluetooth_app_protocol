@@ -153,4 +153,4 @@ app.*.symbols
 .gclient_previous_sync_commits
 
 # 屏蔽修改的本地蓝牙库
-./bluetooth_low_energy
+bluetooth_low_energy
