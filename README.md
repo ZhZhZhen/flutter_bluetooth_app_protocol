@@ -1,16 +1,8 @@
-# bluetooth_p
+# flutter_bluetooth_app_protocol
 
-A new Flutter project.
+用于封装蓝牙调用，并在此之上封装应用层协议
 
-## Getting Started
+## 说明
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- 外围设备使用bluetooth_low_energy实现，因为公司设备不支持多广播，所以修改了库的代码，改变了判断蓝牙是否可用的方式
+- 中心设备使用flutter_blue_plus实现，因为公司另一个sdk使用此库做中心设备处理，所以同步使用该库

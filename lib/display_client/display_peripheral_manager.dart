@@ -17,6 +17,9 @@ class DisplayPeripheralManager {
   Future<void> startAdvertising() async {
     final pMgr = _peripheralManager;
 
+    final permissionResult = await pMgr.requestPermission();
+    if (!permissionResult) return;
+
     final versionNum = await SystemInfoUtil.getAppVersionNumber();
     await pMgr.startAdvertising(
       manufacturerSpecificData: {
