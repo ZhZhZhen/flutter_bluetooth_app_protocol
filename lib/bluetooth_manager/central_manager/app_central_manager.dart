@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:bluetooth_p/bluetooth_manager/bluetooth_constant.dart';
+import 'package:bluetooth_p/util/force_value_notifier.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../../util/event_notifier_mixin.dart';
@@ -17,7 +17,7 @@ class AppCentralManager with EventNotifierMixin {
   static final eventDeviceConnectState = 'eventDeviceConnectState';
 
   //外部消息接受监听
-  final ValueNotifier<List<int>> valueReceiveNotifier = ValueNotifier([]);
+  final ForceValueNotifier<List<int>> valueReceiveNotifier = ForceValueNotifier([]);
 
   //内部监听
   StreamSubscription? _blueStateSubs;

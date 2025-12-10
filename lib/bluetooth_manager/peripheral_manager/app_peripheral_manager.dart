@@ -5,6 +5,7 @@ import 'package:bluetooth_p/util/system_info_util.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../util/event_notifier_mixin.dart';
+import '../../util/force_value_notifier.dart';
 import '../bluetooth_constant.dart';
 
 ///封装蓝牙外围设备的功能
@@ -18,7 +19,7 @@ class AppPeripheralManager with EventNotifierMixin {
   static final eventBlueState = 'eventBlueState';
   static final eventCentralConnectState = 'eventCentralConnectState';
 
-  final ValueNotifier<List<int>> valueWriteNotifier = ValueNotifier([]);
+  final ForceValueNotifier<List<int>> valueWriteNotifier = ForceValueNotifier([]);
 
   //内部监听
   StreamSubscription? _blueStateSubs;
