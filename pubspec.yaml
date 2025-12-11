@@ -27,6 +27,7 @@ dependencies:
   package_info_plus: ^8.3.0
   #扩展集合功能的工具包 https://pub-web.flutter-io.cn/packages/collection
   collection: ^1.19.1
+  characters: ^1.4.0
 
 
 dev_dependencies:

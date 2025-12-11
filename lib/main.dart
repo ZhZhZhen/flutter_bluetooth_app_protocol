@@ -1,5 +1,6 @@
-import 'package:bluetooth_p/features/home_page.dart';
 import 'package:flutter/material.dart';
+
+import 'example/home_page.dart';
 
 void main() {
   runApp(const MyApp());

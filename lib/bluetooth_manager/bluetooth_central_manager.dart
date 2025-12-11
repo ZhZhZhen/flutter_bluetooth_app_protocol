@@ -5,11 +5,11 @@ import 'package:bluetooth_p/util/force_value_notifier.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../../util/event_notifier_mixin.dart';
+import '../util/event_notifier_mixin.dart';
 
 ///封装蓝牙中心设备的功能
-class AppCentralManager with EventNotifierMixin {
-  static final instance = AppCentralManager._();
+class BluetoothCentralManager with EventNotifierMixin {
+  static final instance = BluetoothCentralManager._();
 
   //外部监听事件
   static final eventBlueState = 'eventBlueState';
@@ -17,7 +17,7 @@ class AppCentralManager with EventNotifierMixin {
   static final eventDeviceConnectState = 'eventDeviceConnectState';
 
   //外部消息接受监听
-  final ForceValueNotifier<List<int>> valueReceiveNotifier = ForceValueNotifier([]);
+  final ForceValueNotifier<List<int>> receiveNotifier = ForceValueNotifier([]);
 
   //内部监听
   StreamSubscription? _blueStateSubs;
@@ -31,7 +31,7 @@ class AppCentralManager with EventNotifierMixin {
   BluetoothCharacteristic? _readChar; //读取蓝牙数据的特征值
   BluetoothCharacteristic? _writeChar; //写入蓝牙数据的特征值
 
-  AppCentralManager._() {
+  BluetoothCentralManager._() {
     setupCentralListener();
   }
 
@@ -44,15 +44,15 @@ class AppCentralManager with EventNotifierMixin {
   ///连接中的设备
   BluetoothDevice? get connectedDevice => _connectedDevice;
 
+  bool get isConnectDevice {
+    return connectedDevice?.isConnected ?? false;
+  }
+
   ///协商的每包可写入大小
   int get maxPayloadSize {
     final device = connectedDevice;
     if (device == null) return -1;
     return device.mtuNow - 3;
-  }
-
-  bool get isConnectDevice {
-    return connectedDevice?.isConnected ?? false;
   }
 
   Future<bool> requestPermission() async {
@@ -95,6 +95,7 @@ class AppCentralManager with EventNotifierMixin {
       _connectedDevice = device;
       _listenDevice(device);
       await _discoverDeviceServices(device);
+      notifyEvent(eventDeviceConnectState);
 
       return true;
     } catch (_) {
@@ -150,7 +151,7 @@ class AppCentralManager with EventNotifierMixin {
     }
     await readChar.setNotifyValue(true);
     _readCharacteristicValue = readChar.onValueReceived.listen((value) {
-      valueReceiveNotifier.value = value;
+      receiveNotifier.value = value;
     });
   }
 
@@ -172,6 +173,7 @@ class AppCentralManager with EventNotifierMixin {
       await device.disconnect();
     }
     _resetDeviceInfo();
+    notifyEvent(eventDeviceConnectState);
   }
 
   Future<bool> write(List<int> data) async {

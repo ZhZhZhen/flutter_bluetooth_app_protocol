@@ -4,13 +4,13 @@ import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:bluetooth_p/util/system_info_util.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../util/event_notifier_mixin.dart';
-import '../../util/force_value_notifier.dart';
-import '../bluetooth_constant.dart';
+import '../util/event_notifier_mixin.dart';
+import '../util/force_value_notifier.dart';
+import 'bluetooth_constant.dart';
 
 ///封装蓝牙外围设备的功能
-class AppPeripheralManager with EventNotifierMixin {
-  static final instance = AppPeripheralManager._();
+class BluetoothPeripheralManager with EventNotifierMixin {
+  static final instance = BluetoothPeripheralManager._();
 
   final _peripheralManager = PeripheralManager();
 
@@ -19,7 +19,7 @@ class AppPeripheralManager with EventNotifierMixin {
   static final eventBlueState = 'eventBlueState';
   static final eventCentralConnectState = 'eventCentralConnectState';
 
-  final ForceValueNotifier<List<int>> valueWriteNotifier = ForceValueNotifier([]);
+  final ForceValueNotifier<List<int>> onWriteNotifier = ForceValueNotifier([]);
 
   //内部监听
   StreamSubscription? _blueStateSubs;
@@ -33,7 +33,7 @@ class AppPeripheralManager with EventNotifierMixin {
 
   bool _advertising = false;
 
-  AppPeripheralManager._() {
+  BluetoothPeripheralManager._() {
     setupPeripheralListener();
   }
 
@@ -46,6 +46,10 @@ class AppPeripheralManager with EventNotifierMixin {
   ///连接中的中心设备
   Central? get connectedCentral => _connectedCentral;
 
+  bool get isConnectDevice {
+    return connectedCentral != null;
+  }
+
   ///协商的每包可写入大小
   Future<int> get maxPayloadSize async {
     final central = connectedCentral;
@@ -54,6 +58,7 @@ class AppPeripheralManager with EventNotifierMixin {
   }
 
   Future<void> startAdvertising({
+    String? advertisementName,
     Map<int, Uint8List>? manufacturerSpecificData,
   }) async {
     if (_advertising) {
@@ -93,7 +98,7 @@ class AppPeripheralManager with EventNotifierMixin {
     //开始广播
     await peripheralMgr.startAdvertising(
       Advertisement(
-        name: BluetoothConstant.devicePlatformName,
+        name: advertisementName,
         serviceUUIDs: [UUID.fromString(BluetoothConstant.serviceUuid)],
         manufacturerSpecificData: [
           if (manufacturerSpecificData != null)
@@ -179,7 +184,7 @@ class AppPeripheralManager with EventNotifierMixin {
       final value = request.value;
 
       if (characteristic.uuid == writeUuid) {
-        valueWriteNotifier.value = value;
+        onWriteNotifier.value = value;
       }
 
       await peripheralMgr.respondWriteRequest(request);
