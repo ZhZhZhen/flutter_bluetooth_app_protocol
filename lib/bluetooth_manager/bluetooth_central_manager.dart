@@ -94,6 +94,7 @@ class BluetoothCentralManager with EventNotifierMixin {
       withServices: [Guid.fromString(BluetoothConstant.serviceUuid)],
       timeout: timeout,
     );
+    await FlutterBluePlus.isScanning.firstWhere((isScanning) => !isScanning);
   }
 
   Future<void> stopScan() async {

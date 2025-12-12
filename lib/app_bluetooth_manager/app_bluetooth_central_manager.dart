@@ -105,6 +105,7 @@ class AppBluetoothCentralManager with EventNotifierMixin {
     if (connectResult) {
       _connectedDevice = displayDevice;
     }
+    notifyEvent(eventDeviceConnectState);
 
     return connectResult;
   }
