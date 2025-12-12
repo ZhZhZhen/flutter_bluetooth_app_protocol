@@ -57,6 +57,43 @@ class BluetoothPeripheralManager with EventNotifierMixin {
     return await _peripheralManager.getMaximumNotifyLength(central);
   }
 
+  Future<bool> requestPermission() async {
+    if (!SystemInfoUtil.isAndroid()) return true;
+
+    try {
+      final peripheralMgr = _peripheralManager;
+      //Android端manager创建后立刻调用authorize()，会导致callback置空无法回传结果。查看代码得知完成初始化后会发射第一个状态，所以等待第一个状态到来
+      if (peripheralMgr.state == BluetoothLowEnergyState.unknown) {
+        await peripheralMgr.stateChanged.first;
+      }
+      return await peripheralMgr.authorize();
+    } catch (_) {}
+    return false;
+  }
+
+  Future<bool> waitBluetoothOn({Duration? timeout}) async {
+    try {
+      final peripheralMgr = _peripheralManager;
+      if (peripheralMgr.state == BluetoothLowEnergyState.poweredOn) {
+        return true;
+      }
+
+      final future = peripheralMgr.stateChanged.firstWhere(
+        (event) => event.state == BluetoothLowEnergyState.poweredOn,
+      );
+
+      if (timeout != null) {
+        await future.timeout(timeout);
+      } else {
+        await future;
+      }
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<void> startAdvertising({
     String? advertisementName,
     Map<int, Uint8List>? manufacturerSpecificData,
@@ -121,17 +158,6 @@ class BluetoothPeripheralManager with EventNotifierMixin {
     await _peripheralManager.stopAdvertising();
     _advertising = false;
     notifyEvent(eventAdvertisingState);
-  }
-
-  Future<bool> requestPermission() async {
-    if (!SystemInfoUtil.isAndroid()) return true;
-
-    try {
-      final peripheralMgr = _peripheralManager;
-      return peripheralMgr.authorize();
-    } catch (_) {}
-
-    return false;
   }
 
   Future<bool> notify(List<int> data) async {

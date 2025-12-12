@@ -35,6 +35,11 @@ class AppBluetoothPeripheralManager {
     final permissionResult = await pMgr.requestPermission();
     if (!permissionResult) return;
 
+    final bluetoothOnResult = await pMgr.waitBluetoothOn(
+      timeout: Duration(seconds: 20),
+    );
+    if (!bluetoothOnResult) return;
+
     final versionNum = await SystemInfoUtil.getAppVersionNumber();
     await pMgr.startAdvertising(
       advertisementName: AppBluetoothConstant.devicePlatformName,

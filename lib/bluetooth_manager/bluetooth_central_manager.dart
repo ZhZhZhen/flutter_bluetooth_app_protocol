@@ -65,6 +65,28 @@ class BluetoothCentralManager with EventNotifierMixin {
     return true;
   }
 
+  Future<bool> waitBluetoothOn({Duration? timeout}) async {
+    try {
+      if (FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on) {
+        return true;
+      }
+
+      final future = FlutterBluePlus.adapterState.firstWhere(
+        (state) => state == BluetoothAdapterState.on,
+      );
+
+      if (timeout != null) {
+        await future.timeout(timeout);
+      } else {
+        await future;
+      }
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   Future<void> scanDevice({
     Duration timeout = const Duration(seconds: 15),
   }) async {
