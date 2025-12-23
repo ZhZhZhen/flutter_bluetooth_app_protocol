@@ -4,12 +4,11 @@ import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:bluetooth_p/util/system_info_util.dart';
 import 'package:flutter/foundation.dart';
 
-import '../util/event_notifier_mixin.dart';
 import 'bluetooth_constant.dart';
-import 'bluetooth_utils.dart';
+import 'bluetooth_manager_utils.dart';
 
 ///封装蓝牙外围设备的功能，仅支持单设备连接
-class BluetoothPeripheralManager with EventNotifierMixin {
+class BluetoothPeripheralManager {
   static final instance = BluetoothPeripheralManager._();
 
   final _peripheralManager = PeripheralManager();

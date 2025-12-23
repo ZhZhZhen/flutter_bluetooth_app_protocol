@@ -56,8 +56,8 @@ class AppBluetoothPeripheralManager {
   }
 
   ///写入数据
-  void write(String commandFlag, String value) async {
-    _writeLock.synchronized(() async {
+  Future<void> write(String commandFlag, String value) async {
+    await _writeLock.synchronized(() async {
       final pMgr = peripheralManager;
 
       final packetSize = await pMgr.maxPayloadSize;

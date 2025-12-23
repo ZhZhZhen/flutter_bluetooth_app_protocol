@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:bluetooth_p/bluetooth_manager/bluetooth_constant.dart';
-import 'package:bluetooth_p/bluetooth_manager/bluetooth_utils.dart';
+import 'package:bluetooth_p/bluetooth_manager/bluetooth_manager_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
