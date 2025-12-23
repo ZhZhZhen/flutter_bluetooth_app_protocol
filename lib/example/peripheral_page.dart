@@ -1,8 +1,9 @@
+import 'dart:async';
+
+import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_peripheral_manager.dart';
 import 'package:bluetooth_p/util/no_use_util.dart';
 import 'package:flutter/material.dart';
-
-import '../bluetooth_manager/bluetooth_peripheral_manager.dart';
 
 class PeripheralPage extends StatefulWidget {
   const PeripheralPage({super.key});
@@ -16,38 +17,43 @@ class _PeripheralPageState extends State<PeripheralPage> {
 
   List<String> dataList = [];
 
+  StreamSubscription? _advertisingSubs;
+
+  BluetoothLowEnergyState? _bluetoothState;
+  StreamSubscription? _bluetoothStateSubs;
+
+  StreamSubscription? connectedCentralSubs;
+
   @override
   void initState() {
     super.initState();
-    _pMgr.peripheralManager.addEventListener(
-      BluetoothPeripheralManager.eventAdvertisingState,
-      updateUI,
-    );
-    _pMgr.peripheralManager.addEventListener(
-      BluetoothPeripheralManager.eventBlueState,
-      updateUI,
-    );
-    _pMgr.peripheralManager.addEventListener(
-      BluetoothPeripheralManager.eventCentralConnectState,
-      updateUI,
-    );
+    final aPMgr = _pMgr;
+    final pMgr = aPMgr.peripheralManager;
+    pMgr.requestPermission();
+    _advertisingSubs?.cancel();
+    _advertisingSubs = pMgr.advertisingStream.listen((advertising) {
+      setState(() {});
+    });
+
+    _bluetoothStateSubs?.cancel();
+    _bluetoothStateSubs = pMgr.bluetoothStateStream.listen((state) {
+      _bluetoothState = state;
+      setState(() {});
+    });
+
+    connectedCentralSubs?.cancel();
+    connectedCentralSubs = pMgr.connectedCentralStream.listen((central) {
+      setState(() {});
+    });
+
     _pMgr.commandDispatcher.addListener(receiveData);
   }
 
   @override
   void dispose() {
-    _pMgr.peripheralManager.removeEventListener(
-      BluetoothPeripheralManager.eventAdvertisingState,
-      updateUI,
-    );
-    _pMgr.peripheralManager.removeEventListener(
-      BluetoothPeripheralManager.eventBlueState,
-      updateUI,
-    );
-    _pMgr.peripheralManager.removeEventListener(
-      BluetoothPeripheralManager.eventCentralConnectState,
-      updateUI,
-    );
+    _advertisingSubs?.cancel();
+    _bluetoothStateSubs?.cancel();
+    connectedCentralSubs?.cancel();
     _pMgr.commandDispatcher.removeListener(receiveData);
     super.dispose();
   }
@@ -75,7 +81,7 @@ class _PeripheralPageState extends State<PeripheralPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('blueState: ${_pMgr.peripheralManager.blueState}'),
+                  Text('blueState: $_bluetoothState'),
                   Text('advertising: ${_pMgr.peripheralManager.advertising}'),
                   Text(
                     'connectCentral: ${_pMgr.peripheralManager.connectedCentral}',

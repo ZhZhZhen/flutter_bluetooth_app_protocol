@@ -1,76 +1,84 @@
 import 'dart:convert';
 
-import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_protocol.dart';
-import 'package:bluetooth_p/bluetooth_manager/bluetooth_central_manager.dart';
-import 'package:bluetooth_p/util/dispatcher.dart';
-import 'package:bluetooth_p/util/event_notifier_mixin.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:synchronized/synchronized.dart';
 
+import '../bluetooth_manager/bluetooth_central_manager.dart';
+import '../util/dispatcher.dart';
+import 'app_bluetooth_protocol.dart';
 import 'callback/command_callback.dart';
 import 'app_bluetooth_constant.dart';
 import 'model/command_message.dart';
 import 'model/display_bluetooth_device.dart';
 import 'model/packets.dart';
 
-class AppBluetoothCentralManager with EventNotifierMixin {
+class AppBluetoothCentralManager {
   static final instance = AppBluetoothCentralManager._();
 
   final centralManager = BluetoothCentralManager.instance;
 
-  //外部监听事件
-  static final eventScanResult = 'eventScanResult';
-  static final eventDeviceConnectState = 'eventDeviceConnectState';
-
   //写入监听
   final commandDispatcher = Dispatcher<CommandCallback>();
+  final _writeLock = Lock(); //用于串行写入
 
   //内部值
   Packets? _packets;
-  List<DisplayBluetoothDevice>? _scanDeviceList;
-  DisplayBluetoothDevice? _connectedDevice;
+  DisplayBluetoothDevice? _pendingDevice;
 
   AppBluetoothCentralManager._() {
     final cMgr = centralManager;
-    //接收数据监听
-    cMgr.receiveNotifier.addListener(_receiveValue);
-    cMgr.addEventListener(BluetoothCentralManager.eventScanResult, _onDeviceScan);
-    cMgr.addEventListener(
-      BluetoothCentralManager.eventDeviceConnectState,
-      _onDeviceConnectStateChange,
-    );
+    cMgr.receiveStream.listen((data) {
+      _receiveValue(data);
+    });
   }
 
-  ///最近一次的扫描结果
-  List<DisplayBluetoothDevice> get scanDeviceList => _scanDeviceList ?? [];
+  ///蓝牙扫描结果监听
+  Stream<List<DisplayBluetoothDevice>> get scanDevices =>
+      centralManager.scanResults.map((scanResultList) {
+        final deviceList =
+            scanResultList.map(_tranScanResultToDisplayDevice).toList();
+        return deviceList;
+      });
 
-  ///正在连接的设备
-  DisplayBluetoothDevice? get connectedDevice => _connectedDevice;
+  ///已连接设备监听
+  Stream<DisplayBluetoothDevice?> get connectedDeviceStream => centralManager
+      .connectedDeviceStream
+      .map((device) => _checkAndReturnPendingDevice(_pendingDevice, device));
 
-  ///是否处于连接状态
+  ///连接中的设备
+  DisplayBluetoothDevice? get connectedDevice => _checkAndReturnPendingDevice(
+    _pendingDevice,
+    centralManager.connectedDevice,
+  );
+
+  ///是否连接
   bool get isConnectDevice => centralManager.isConnectDevice;
 
   ///写入数据
-  void write(String commandFlag, String value) async {
-    final cMgr = centralManager;
+  Future<void> write({required String commandFlag, String? value}) async {
+    await _writeLock.synchronized(() async {
+      final cMgr = centralManager;
 
-    final packetSize = cMgr.maxPayloadSize;
-    final data = utf8.encode(
-      CommandMessage(commandFlag: commandFlag, value: value).toString(),
-    );
-    final packets = AppBluetoothProtocol.convertPackets(
-      data,
-      packetSize: packetSize,
-      opFlag: AppBluetoothProtocol.opFlagCommand,
-    );
-    //首包后延时确保第一包能首先收到，整个命令发送后延时确保不和下一个命令重叠，虽然不知道这样做有没有用
-    bool firstSend = true;
-    for (final packet in packets) {
-      cMgr.write(packet);
-      if (firstSend) {
-        firstSend = false;
-        await Future.delayed(const Duration(milliseconds: 100));
+      final packetSize = cMgr.maxPayloadSize;
+      final data = utf8.encode(
+        CommandMessage(commandFlag: commandFlag, value: value ?? '').toString(),
+      );
+      final packets = AppBluetoothProtocol.convertPackets(
+        data,
+        packetSize: packetSize,
+        opFlag: AppBluetoothProtocol.opFlagCommand,
+      );
+      //首包后延时确保第一包能首先收到，整个命令发送后延时确保不和下一个命令重叠，虽然不知道这样做有没有用
+      bool firstSend = true;
+      for (final packet in packets) {
+        cMgr.write(packet);
+        if (firstSend) {
+          firstSend = false;
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
       }
-    }
-    await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 100));
+    });
   }
 
   ///扫描设备
@@ -78,10 +86,6 @@ class AppBluetoothCentralManager with EventNotifierMixin {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     final cMgr = centralManager;
-
-    final permissionResult = await cMgr.requestPermission();
-    if (!permissionResult) return;
-
     await cMgr.scanDevice(timeout: timeout);
   }
 
@@ -97,15 +101,12 @@ class AppBluetoothCentralManager with EventNotifierMixin {
     Duration timeout = const Duration(seconds: 20),
   }) async {
     final cMgr = centralManager;
+
+    _pendingDevice = displayDevice;
     final connectResult = await cMgr.connectDevice(
       displayDevice.device,
       timeout: timeout,
     );
-
-    if (connectResult) {
-      _connectedDevice = displayDevice;
-    }
-    notifyEvent(eventDeviceConnectState);
 
     return connectResult;
   }
@@ -116,10 +117,7 @@ class AppBluetoothCentralManager with EventNotifierMixin {
     await cMgr.disconnectDevice();
   }
 
-  void _receiveValue() {
-    final cMgr = centralManager;
-    final data = cMgr.receiveNotifier.value;
-
+  void _receiveValue(List<int> data) {
     //校验包
     if (!AppBluetoothProtocol.validatePacket(data)) return;
 
@@ -149,31 +147,26 @@ class AppBluetoothCentralManager with EventNotifierMixin {
     }
   }
 
-  void _onDeviceScan() {
-    final cMgr = centralManager;
-    final resultList = cMgr.scanResult;
-    final deviceList =
-        resultList.map((scanResult) {
-          final device = scanResult.device;
-          final mData = scanResult.advertisementData.manufacturerData;
-          final version = (mData[AppBluetoothConstant
-                      .manufacturerDataVersion] ??
-                  [0, 0, 0])
-              .join('.');
+  DisplayBluetoothDevice _tranScanResultToDisplayDevice(ScanResult scanResult) {
+    final device = scanResult.device;
+    final mData = scanResult.advertisementData.manufacturerData;
+    final version = (mData[AppBluetoothConstant.manufacturerDataVersion] ??
+            [0, 0, 0])
+        .join('.');
 
-          return DisplayBluetoothDevice(device: device, version: version);
-        }).toList();
-    _scanDeviceList = deviceList;
-    notifyEvent(eventScanResult);
+    return DisplayBluetoothDevice(device: device, version: version);
   }
 
-  void _onDeviceConnectStateChange() {
-    final cMgr = centralManager;
-    final isConnect = cMgr.isConnectDevice;
-    if (!isConnect) {
-      _connectedDevice = null;
+  DisplayBluetoothDevice? _checkAndReturnPendingDevice(
+    DisplayBluetoothDevice? pendingDevice,
+    BluetoothDevice? device,
+  ) {
+    if (device == null || pendingDevice == null) return null;
+
+    if (device.remoteId != pendingDevice.device.remoteId) {
+      return null;
     }
 
-    notifyEvent(eventDeviceConnectState);
+    return pendingDevice;
   }
 }

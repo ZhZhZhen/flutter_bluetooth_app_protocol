@@ -1,6 +1,8 @@
+import 'dart:async';
+
 import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_central_manager.dart';
-import 'package:bluetooth_p/bluetooth_manager/bluetooth_central_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../app_bluetooth_manager/model/display_bluetooth_device.dart';
 
@@ -14,42 +16,45 @@ class CentralPage extends StatefulWidget {
 class _CentralPageState extends State<CentralPage> {
   final _cMgr = AppBluetoothCentralManager.instance;
 
+  List<String> dataList = [];
+
+  StreamSubscription? _bluetoothStateSubs;
+  BluetoothAdapterState? blueState;
+
+  StreamSubscription? _scanDeviceSubs;
   List<DisplayBluetoothDevice> _scanResultList = [];
 
-  List<String> dataList = [];
+  StreamSubscription? _connectedDeviceSubs;
 
   @override
   void initState() {
     super.initState();
-    _cMgr.centralManager.addEventListener(
-      BluetoothCentralManager.eventBlueState,
-      updateUI,
-    );
-    _cMgr.addEventListener(
-      AppBluetoothCentralManager.eventDeviceConnectState,
-      updateUI,
-    );
-    _cMgr.addEventListener(
-      AppBluetoothCentralManager.eventScanResult,
-      updateScanResultList,
-    );
+    _cMgr.centralManager.requestPermission();
+    _bluetoothStateSubs?.cancel();
+    _bluetoothStateSubs = _cMgr.centralManager.bluetoothState.listen((state) {
+      blueState = state;
+      setState(() {});
+    });
+
+    _scanDeviceSubs?.cancel();
+    _scanDeviceSubs = _cMgr.scanDevices.listen((deviceList) {
+      _scanResultList = deviceList;
+      setState(() {});
+    });
+
+    _connectedDeviceSubs?.cancel();
+    _connectedDeviceSubs = _cMgr.connectedDeviceStream.listen((device) {
+      setState(() {});
+    });
+
     _cMgr.commandDispatcher.addListener(receiveData);
   }
 
   @override
   void dispose() {
-    _cMgr.centralManager.removeEventListener(
-      BluetoothCentralManager.eventBlueState,
-      updateUI,
-    );
-    _cMgr.removeEventListener(
-      AppBluetoothCentralManager.eventDeviceConnectState,
-      updateUI,
-    );
-    _cMgr.removeEventListener(
-      AppBluetoothCentralManager.eventScanResult,
-      updateScanResultList,
-    );
+    _bluetoothStateSubs?.cancel();
+    _scanDeviceSubs?.cancel();
+    _connectedDeviceSubs?.cancel();
     _cMgr.commandDispatcher.removeListener(receiveData);
     super.dispose();
   }
@@ -81,7 +86,7 @@ class _CentralPageState extends State<CentralPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('blueState: ${_cMgr.centralManager.blueState}'),
+                        Text('blueState: $blueState'),
                         Text('connectedDevice: ${_cMgr.connectedDevice}'),
                         TextButton(
                           onPressed: () {
@@ -153,18 +158,11 @@ class _CentralPageState extends State<CentralPage> {
   }
 
   void write() {
-    _cMgr.write('method1', 'value1');
+    _cMgr.write(commandFlag: 'method1', value: 'value1');
   }
 
   void updateUI() {
     setState(() {});
-  }
-
-  void updateScanResultList() {
-    final result = _cMgr.scanDeviceList;
-    setState(() {
-      _scanResultList = result;
-    });
   }
 
   void receiveData(String commandFlag, String value) {

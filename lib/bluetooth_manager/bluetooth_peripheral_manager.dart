@@ -5,52 +5,65 @@ import 'package:bluetooth_p/util/system_info_util.dart';
 import 'package:flutter/foundation.dart';
 
 import '../util/event_notifier_mixin.dart';
-import '../util/force_value_notifier.dart';
 import 'bluetooth_constant.dart';
+import 'bluetooth_utils.dart';
 
-///封装蓝牙外围设备的功能
+///封装蓝牙外围设备的功能，仅支持单设备连接
 class BluetoothPeripheralManager with EventNotifierMixin {
   static final instance = BluetoothPeripheralManager._();
 
   final _peripheralManager = PeripheralManager();
 
-  //外部监听事件
-  static final eventAdvertisingState = 'eventAdvertisingState';
-  static final eventBlueState = 'eventBlueState';
-  static final eventCentralConnectState = 'eventCentralConnectState';
-
-  final ForceValueNotifier<List<int>> onWriteNotifier = ForceValueNotifier([]);
+  //提供外部监听
+  final _advertisingController = StreamControllerReEmit<bool>(
+    initialValue: false,
+  );
+  final _connectedCentralController = StreamControllerReEmit<Central?>(
+    initialValue: null,
+  );
+  final _receiveController = StreamController<List<int>>.broadcast();
 
   //内部监听
-  StreamSubscription? _blueStateSubs;
   StreamSubscription? _centralConnectSubs;
   StreamSubscription? _charWriteSubs;
   StreamSubscription? _notifyStateSubs;
 
   //内部值
   GATTCharacteristic? _notifyChar;
-  Central? _connectedCentral;
-
-  bool _advertising = false;
 
   BluetoothPeripheralManager._() {
-    setupPeripheralListener();
+    _setupPeripheralListener();
   }
 
-  ///蓝牙状态
-  BluetoothLowEnergyState get blueState => _peripheralManager.state;
+  ///蓝牙状态监听
+  Stream<BluetoothLowEnergyState> get bluetoothStateStream {
+    final peripheralManager = _peripheralManager;
+    final stateNow = peripheralManager.state;
+    return _peripheralManager.stateChanged
+        .map((e) => e.state)
+        .transform(NewStreamWithInitialValueTransformer(stateNow));
+  }
+
+  ///广播状态监听
+  Stream<bool> get advertisingStream => _advertisingController.stream;
 
   ///广播状态
-  bool get advertising => _advertising;
+  bool get advertising => _advertisingController.latestValue;
 
-  ///连接中的中心设备
-  Central? get connectedCentral => _connectedCentral;
+  ///已连接设备监听
+  Stream<Central?> get connectedCentralStream =>
+      _connectedCentralController.stream.distinct();
 
-  bool get isConnectDevice {
-    return connectedCentral != null;
-  }
+  ///连接中的设备
+  Central? get connectedCentral => _connectedCentralController.latestValue;
 
-  ///协商的每包可写入大小
+  ///是否连接
+  bool get isConnectDevice => connectedCentral != null;
+
+  ///接收数据监听
+  Stream<List<int>> get receiveStream => _receiveController.stream;
+
+  ///协商的每包可写入大小v
   Future<int> get maxPayloadSize async {
     final central = connectedCentral;
     if (central == null) return -1;
@@ -98,7 +111,7 @@ class BluetoothPeripheralManager with EventNotifierMixin {
     String? advertisementName,
     Map<int, Uint8List>? manufacturerSpecificData,
   }) async {
-    if (_advertising) {
+    if (advertising) {
       return;
     }
 
@@ -146,23 +159,21 @@ class BluetoothPeripheralManager with EventNotifierMixin {
       ),
     );
     //通知完成
-    _advertising = true;
-    notifyEvent(eventAdvertisingState);
+    _advertisingController.add(true);
   }
 
   Future<void> stopAdvertising() async {
-    if (!_advertising) {
+    if (!advertising) {
       return;
     }
 
     await _peripheralManager.stopAdvertising();
-    _advertising = false;
-    notifyEvent(eventAdvertisingState);
+    _advertisingController.add(false);
   }
 
   Future<bool> notify(List<int> data) async {
     final peripheralMgr = _peripheralManager;
-    final central = _connectedCentral;
+    final central = connectedCentral;
     final notifyChar = _notifyChar;
     if (central == null || notifyChar == null) {
       return false;
@@ -180,24 +191,22 @@ class BluetoothPeripheralManager with EventNotifierMixin {
   }
 
   ///设置监听
-  void setupPeripheralListener() {
+  void _setupPeripheralListener() {
     final peripheralMgr = _peripheralManager;
-    //蓝牙状态
-    _blueStateSubs?.cancel();
-    _blueStateSubs = peripheralMgr.stateChanged.listen((event) {
-      notifyEvent(eventBlueState);
-    });
     //连接监听
     _centralConnectSubs?.cancel();
     _centralConnectSubs = peripheralMgr.connectionStateChanged.listen((event) {
       final connectState = event.state;
       final central = event.central;
+      final connectedCentral = this.connectedCentral;
+      //只允许最先连接的设备进行判定
       if (connectState == ConnectionState.connected) {
-        _connectedCentral = central;
+        if (connectedCentral != null) return;
+        _connectedCentralController.add(central);
       } else {
-        _connectedCentral = null;
+        if (connectedCentral != central) return;
+        _connectedCentralController.add(null);
       }
-      notifyEvent(eventCentralConnectState);
     });
     //写入监听
     final writeUuid = UUID.fromString(BluetoothConstant.writeCharUuid);
@@ -210,31 +219,27 @@ class BluetoothPeripheralManager with EventNotifierMixin {
       final value = request.value;
 
       if (characteristic.uuid == writeUuid) {
-        onWriteNotifier.value = value;
+        _receiveController.add(value);
       }
 
       await peripheralMgr.respondWriteRequest(request);
     });
     //notify状态改变监听
+    final notifyUuid = UUID.fromString(BluetoothConstant.notifyCharUuid);
     _notifyStateSubs?.cancel();
     _notifyStateSubs = peripheralMgr.characteristicNotifyStateChanged.listen((
       event,
     ) {
       final notifyState = event.state;
+      final central = event.central;
       final notifyChar = event.characteristic;
-      if (notifyState) {
-        _notifyChar = notifyChar;
-      } else {
-        _notifyChar = null;
+      if (central == connectedCentral && notifyChar.uuid == notifyUuid) {
+        if (notifyState) {
+          _notifyChar = notifyChar;
+        } else {
+          _notifyChar = null;
+        }
       }
     });
-  }
-
-  ///清除监听
-  void disposePeripheralListener() {
-    _blueStateSubs?.cancel();
-    _centralConnectSubs?.cancel();
-    _charWriteSubs?.cancel();
-    _notifyStateSubs?.cancel();
   }
 }

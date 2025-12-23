@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bluetooth_p/util/system_info_util.dart';
+import 'package:synchronized/synchronized.dart';
 
 import '../bluetooth_manager/bluetooth_peripheral_manager.dart';
 import 'app_bluetooth_constant.dart';
@@ -19,26 +20,21 @@ class AppBluetoothPeripheralManager {
 
   //写入监听
   final commandDispatcher = Dispatcher<CommandCallback>();
+  final _writeLock = Lock(); //用于串行写入
 
   //内布值
   Packets? _packets;
 
   AppBluetoothPeripheralManager._() {
     final pMgr = peripheralManager;
-    pMgr.onWriteNotifier.addListener(_receiveValue);
+    pMgr.receiveStream.listen((data) {
+      _receiveValue(data);
+    });
   }
 
   ///开启广播
   Future<void> startAdvertising() async {
     final pMgr = peripheralManager;
-
-    final permissionResult = await pMgr.requestPermission();
-    if (!permissionResult) return;
-
-    final bluetoothOnResult = await pMgr.waitBluetoothOn(
-      timeout: Duration(seconds: 20),
-    );
-    if (!bluetoothOnResult) return;
 
     final versionNum = await SystemInfoUtil.getAppVersionNumber();
     await pMgr.startAdvertising(
@@ -61,33 +57,32 @@ class AppBluetoothPeripheralManager {
 
   ///写入数据
   void write(String commandFlag, String value) async {
-    final pMgr = peripheralManager;
+    _writeLock.synchronized(() async {
+      final pMgr = peripheralManager;
 
-    final packetSize = await pMgr.maxPayloadSize;
-    final data = utf8.encode(
-      CommandMessage(commandFlag: commandFlag, value: value).toString(),
-    );
-    final packets = AppBluetoothProtocol.convertPackets(
-      data,
-      packetSize: packetSize,
-      opFlag: AppBluetoothProtocol.opFlagCommand,
-    );
-    //首包后延时确保第一包能首先收到，整个命令发送后延时确保不和下一个命令重叠，虽然不知道这样做有没有用
-    bool firstSend = true;
-    for (final packet in packets) {
-      pMgr.notify(packet);
-      if (firstSend) {
-        firstSend = false;
-        await Future.delayed(const Duration(milliseconds: 100));
+      final packetSize = await pMgr.maxPayloadSize;
+      final data = utf8.encode(
+        CommandMessage(commandFlag: commandFlag, value: value).toString(),
+      );
+      final packets = AppBluetoothProtocol.convertPackets(
+        data,
+        packetSize: packetSize,
+        opFlag: AppBluetoothProtocol.opFlagCommand,
+      );
+      //首包后延时确保第一包能首先收到，整个命令发送后延时确保不和下一个命令重叠，虽然不知道这样做有没有用
+      bool firstSend = true;
+      for (final packet in packets) {
+        pMgr.notify(packet);
+        if (firstSend) {
+          firstSend = false;
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
       }
-    }
-    await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 100));
+    });
   }
 
-  void _receiveValue() {
-    final pMgr = peripheralManager;
-    final data = pMgr.onWriteNotifier.value;
-
+  void _receiveValue(List<int> data) {
     //校验包
     if (!AppBluetoothProtocol.validatePacket(data)) return;
 
