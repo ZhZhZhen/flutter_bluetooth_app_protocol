@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_peripheral_manager.dart';
-import 'package:bluetooth_p/util/no_use_util.dart';
 import 'package:flutter/material.dart';
+
+import '../app_bluetooth_manager/app_bluetooth_protocol.dart';
+import '../app_bluetooth_manager/model/packets.dart';
 
 class PeripheralPage extends StatefulWidget {
   const PeripheralPage({super.key});
@@ -23,6 +26,8 @@ class _PeripheralPageState extends State<PeripheralPage> {
   StreamSubscription? _bluetoothStateSubs;
 
   StreamSubscription? connectedCentralSubs;
+
+  StreamSubscription? _receivePacketsSubs;
 
   @override
   void initState() {
@@ -46,7 +51,10 @@ class _PeripheralPageState extends State<PeripheralPage> {
       setState(() {});
     });
 
-    _pMgr.commandDispatcher.addListener(receiveData);
+    _receivePacketsSubs?.cancel();
+    _receivePacketsSubs = aPMgr.receivePacketsStream.listen((packets) {
+      receivePackets(packets);
+    });
   }
 
   @override
@@ -54,7 +62,7 @@ class _PeripheralPageState extends State<PeripheralPage> {
     _advertisingSubs?.cancel();
     _bluetoothStateSubs?.cancel();
     connectedCentralSubs?.cancel();
-    _pMgr.commandDispatcher.removeListener(receiveData);
+    _receivePacketsSubs?.cancel();
     super.dispose();
   }
 
@@ -104,7 +112,11 @@ class _PeripheralPageState extends State<PeripheralPage> {
                     },
                     child: Text('clear data'),
                   ),
-                  TextButton(onPressed: write, child: Text('write something')),
+                  TextButton(
+                    onPressed: writeNoResp,
+                    child: Text('writeNoResp'),
+                  ),
+                  TextButton(onPressed: write, child: Text('write')),
                 ],
               ),
             ),
@@ -114,21 +126,45 @@ class _PeripheralPageState extends State<PeripheralPage> {
     );
   }
 
-  void updateUI() {
-    setState(() {});
-  }
-
-  void receiveData(String commandFlag, String value) {
-    print('zztest commandFlag:$commandFlag value:$value');
-  }
-
   void clearData() {
     setState(() {
       dataList.clear();
     });
   }
 
-  void write() async {
-    _pMgr.write('method1', NoUseUtil.testMessage);
+  void writeNoResp() async{
+    final test = 'helloWorld';
+    final byteData = utf8.encode(test);
+    setState(() {
+      dataList.add('writeNoResp: $test');
+    });
+    await _pMgr.writeWithoutResponse(byteData);
+  }
+
+  Future<void> write() async {
+    final test = 'helloWorld, plz resp me';
+    final byteData = utf8.encode(test);
+    setState(() {
+      dataList.add('write: $test');
+    });
+    final respByteData = await _pMgr.write(byteData);
+
+    final resp = utf8.decode(respByteData);
+    setState(() {
+      dataList.add('write receive: $resp');
+    });
+  }
+
+  void receivePackets(Packets packets) {
+    if (packets.opFlag == AppBluetoothProtocol.opFlagRequest) {
+      final messageIndex = packets.messageIndex;
+      _pMgr.respond(utf8.encode('hello this is world'), messageIndex);
+    } else {
+      final data = packets.getData();
+      final resp = utf8.decode(data);
+      setState(() {
+        dataList.add('receive: $resp');
+      });
+    }
   }
 }

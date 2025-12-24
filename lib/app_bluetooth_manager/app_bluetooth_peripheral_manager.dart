@@ -1,15 +1,11 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:bluetooth_p/util/system_info_util.dart';
-import 'package:synchronized/synchronized.dart';
 
 import '../bluetooth_manager/bluetooth_peripheral_manager.dart';
 import 'app_bluetooth_constant.dart';
-import 'callback/command_callback.dart';
-import '../util/dispatcher.dart';
 import 'app_bluetooth_protocol.dart';
-import 'model/command_message.dart';
 import 'model/packets.dart';
 
 ///封装屏幕蓝牙的应用层协议
@@ -18,12 +14,9 @@ class AppBluetoothPeripheralManager {
 
   final peripheralManager = BluetoothPeripheralManager.instance;
 
-  //写入监听
-  final commandDispatcher = Dispatcher<CommandCallback>();
-  final _writeLock = Lock(); //用于串行写入
-
   //内布值
-  Packets? _packets;
+  final _receivePacketsController = StreamController<Packets>.broadcast();
+  final _appProtocol = AppBluetoothProtocol();
 
   AppBluetoothPeripheralManager._() {
     final pMgr = peripheralManager;
@@ -31,6 +24,9 @@ class AppBluetoothPeripheralManager {
       _receiveValue(data);
     });
   }
+
+  ///接收包监听
+  Stream<Packets> get receivePacketsStream => _receivePacketsController.stream;
 
   ///开启广播
   Future<void> startAdvertising() async {
@@ -55,60 +51,61 @@ class AppBluetoothPeripheralManager {
     await pMgr.stopAdvertising();
   }
 
-  ///写入数据
-  Future<void> write(String commandFlag, String value) async {
-    await _writeLock.synchronized(() async {
-      final pMgr = peripheralManager;
+  ///带返回写入数据
+  Future<List<int>> write(
+    List<int> data, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final pMgr = peripheralManager;
 
-      final packetSize = await pMgr.maxPayloadSize;
-      final data = utf8.encode(
-        CommandMessage(commandFlag: commandFlag, value: value).toString(),
-      );
-      final packets = AppBluetoothProtocol.convertPackets(
-        data,
-        packetSize: packetSize,
-        opFlag: AppBluetoothProtocol.opFlagCommand,
-      );
-      //首包后延时确保第一包能首先收到，整个命令发送后延时确保不和下一个命令重叠，虽然不知道这样做有没有用
-      bool firstSend = true;
-      for (final packet in packets) {
-        pMgr.notify(packet);
-        if (firstSend) {
-          firstSend = false;
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-      }
-      await Future.delayed(const Duration(milliseconds: 100));
-    });
+    final packetSize = await pMgr.maxPayloadSize;
+    return _appProtocol.write(
+      data: data,
+      maxPacketSize: packetSize,
+      onWrite: (packet) async {
+        await pMgr.notify(packet);
+      },
+      timeout: timeout,
+    );
   }
 
+  ///无返回写入数据
+  Future<void> writeWithoutResponse(List<int> data) async {
+    final pMgr = peripheralManager;
+
+    final packetSize = await pMgr.maxPayloadSize;
+    await _appProtocol.writeWithoutResponse(
+      data: data,
+      maxPacketSize: packetSize,
+      onWrite: (packet) async {
+        await pMgr.notify(packet);
+      },
+    );
+  }
+
+  ///应答，需要请求的消息序号
+  Future<void> respond(List<int> data, int messageIndex) async {
+    final pMgr = peripheralManager;
+
+    final packetSize = await pMgr.maxPayloadSize;
+    await _appProtocol.writeWithoutResponse(
+      data: data,
+      maxPacketSize: packetSize,
+      opFlag: AppBluetoothProtocol.opFlagResponse,
+      messageIndex: messageIndex,
+      onWrite: (packet) async {
+        await pMgr.notify(packet);
+      },
+    );
+  }
+
+  ///接收数据
   void _receiveValue(List<int> data) {
-    //校验包
-    if (!AppBluetoothProtocol.validatePacket(data)) return;
-
-    //组合包
-    final isFirstPacket = AppBluetoothProtocol.isFirstPacket(data);
-    if (isFirstPacket) {
-      final packetsNum = AppBluetoothProtocol.getPacketsNum(data);
-      final packets = Packets(packSize: packetsNum);
-      packets.add(data);
-      _packets = packets;
-    } else {
-      final packets = _packets;
-      if (packets == null) return;
-      packets.add(data);
-    }
-
-    //检查包是否组合完成
-    final packets = _packets;
-    if (packets == null) return;
-    if (packets.isComplete()) {
-      try {
-        final finalData = packets.getData();
-        final jsonStr = utf8.decode(finalData);
-        final commandMsg = CommandMessage.fromJson(jsonDecode(jsonStr));
-        commandDispatcher.dispatch([commandMsg.commandFlag, commandMsg.value]);
-      } catch (_) {}
-    }
+    _appProtocol.receive(
+      data: data,
+      packetsCallback: (packets) {
+        _receivePacketsController.add(packets);
+      },
+    );
   }
 }

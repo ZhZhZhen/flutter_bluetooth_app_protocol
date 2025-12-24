@@ -7,9 +7,15 @@ import 'package:flutter/cupertino.dart';
 class Packets {
   //<包序号,包数据>，因为不确定蓝牙是否会串行接收，所以使用TreeMap
   final rawDataMap = SplayTreeMap<int, List<int>>();
+  final int opFlag;
+  final int messageIndex;
   final int packSize;
 
-  Packets({required this.packSize});
+  Packets({
+    required this.opFlag,
+    required this.messageIndex,
+    required this.packSize,
+  });
 
   bool isComplete() {
     return rawDataMap.length >= packSize;
@@ -31,5 +37,10 @@ class Packets {
     }
 
     return AppBluetoothProtocol.mergePackets(rawDataList);
+  }
+
+  @override
+  String toString() {
+    return '$runtimeType opFlag:$opFlag messageIndex:$messageIndex packSize:$packSize rawDataMap:$rawDataMap';
   }
 }

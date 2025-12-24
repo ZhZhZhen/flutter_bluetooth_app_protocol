@@ -1,10 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_central_manager.dart';
+import 'package:bluetooth_p/app_bluetooth_manager/app_bluetooth_protocol.dart';
+import 'package:bluetooth_p/app_bluetooth_manager/model/packets.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../app_bluetooth_manager/model/display_bluetooth_device.dart';
+import '../util/system_info_util.dart';
 
 class CentralPage extends StatefulWidget {
   const CentralPage({super.key});
@@ -26,10 +32,12 @@ class _CentralPageState extends State<CentralPage> {
 
   StreamSubscription? _connectedDeviceSubs;
 
+  StreamSubscription? _receivePacketsSubs;
+
   @override
   void initState() {
     super.initState();
-    _cMgr.centralManager.requestPermission();
+    requestPermission();
     _bluetoothStateSubs?.cancel();
     _bluetoothStateSubs = _cMgr.centralManager.bluetoothState.listen((state) {
       blueState = state;
@@ -47,7 +55,10 @@ class _CentralPageState extends State<CentralPage> {
       setState(() {});
     });
 
-    _cMgr.commandDispatcher.addListener(receiveData);
+    _receivePacketsSubs?.cancel();
+    _receivePacketsSubs = _cMgr.receivePacketsStream.listen((packets) {
+      receivePackets(packets);
+    });
   }
 
   @override
@@ -55,7 +66,7 @@ class _CentralPageState extends State<CentralPage> {
     _bluetoothStateSubs?.cancel();
     _scanDeviceSubs?.cancel();
     _connectedDeviceSubs?.cancel();
-    _cMgr.commandDispatcher.removeListener(receiveData);
+    _receivePacketsSubs?.cancel();
     super.dispose();
   }
 
@@ -107,9 +118,10 @@ class _CentralPageState extends State<CentralPage> {
                           child: Text('disconnectDevice'),
                         ),
                         TextButton(
-                          onPressed: write,
-                          child: Text('write something'),
+                          onPressed: writeNoResp,
+                          child: Text('writeNoResp'),
                         ),
+                        TextButton(onPressed: write, child: Text('write')),
                         TextButton(
                           onPressed: clearData,
                           child: Text('clear data'),
@@ -157,21 +169,56 @@ class _CentralPageState extends State<CentralPage> {
     print('connect success');
   }
 
-  void write() {
-    _cMgr.write(commandFlag: 'method1', value: 'value1');
+  void writeNoResp() async {
+    final test = 'helloWorld';
+    final byteData = utf8.encode(test);
+    setState(() {
+      dataList.add('writeNoResp: $test');
+    });
+    await _cMgr.writeWithoutResponse(byteData);
   }
 
-  void updateUI() {
-    setState(() {});
+  Future<void> write() async {
+    final test = 'helloWorld, plz resp me';
+    final byteData = utf8.encode(test);
+    setState(() {
+      dataList.add('write: $test');
+    });
+    final respByteData = await _cMgr.write(byteData);
+
+    final resp = utf8.decode(respByteData);
+    setState(() {
+      dataList.add('write receive: $resp');
+    });
   }
 
-  void receiveData(String commandFlag, String value) {
-    print('zztest commandFlag:$commandFlag value:$value');
+  void receivePackets(Packets packets) {
+    if (packets.opFlag == AppBluetoothProtocol.opFlagRequest) {
+      final messageIndex = packets.messageIndex;
+      _cMgr.respond(utf8.encode('hello this is world'), messageIndex);
+    } else {
+      final data = packets.getData();
+      final resp = utf8.decode(data);
+      setState(() {
+        dataList.add('receive: $resp');
+      });
+    }
   }
 
   void clearData() {
     setState(() {
       dataList.clear();
     });
+  }
+
+  void requestPermission()async{
+    List<Permission> permissions = [];
+    if (SystemInfoUtil.isAndroid()) {
+      permissions.addAll([Permission.location]);
+    }
+
+    await permissions.request();
+
+    _cMgr.centralManager.requestPermission();
   }
 }
