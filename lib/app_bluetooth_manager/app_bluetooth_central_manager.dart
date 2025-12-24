@@ -50,14 +50,14 @@ class AppBluetoothCentralManager {
   Stream<Packets> get receivePacketsStream => _receivePacketsController.stream;
 
   ///带返回写入数据
-  Future<List<int>> write(
+  Future<List<int>> writeWithResponse(
     List<int> data, {
     Duration timeout = const Duration(seconds: 5),
   }) async {
     final cMgr = centralManager;
 
     final packetSize = cMgr.maxPayloadSize;
-    return _appProtocol.write(
+    return _appProtocol.writeWithResponse(
       data: data,
       maxPacketSize: packetSize,
       onWrite: (packet) async {

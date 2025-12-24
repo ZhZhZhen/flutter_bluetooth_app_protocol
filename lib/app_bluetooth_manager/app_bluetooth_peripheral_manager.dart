@@ -52,14 +52,14 @@ class AppBluetoothPeripheralManager {
   }
 
   ///带返回写入数据
-  Future<List<int>> write(
+  Future<List<int>> writeWithResponse(
     List<int> data, {
     Duration timeout = const Duration(seconds: 5),
   }) async {
     final pMgr = peripheralManager;
 
     final packetSize = await pMgr.maxPayloadSize;
-    return _appProtocol.write(
+    return _appProtocol.writeWithResponse(
       data: data,
       maxPacketSize: packetSize,
       onWrite: (packet) async {

@@ -147,7 +147,7 @@ class _PeripheralPageState extends State<PeripheralPage> {
     setState(() {
       dataList.add('write: $test');
     });
-    final respByteData = await _pMgr.write(byteData);
+    final respByteData = await _pMgr.writeWithResponse(byteData);
 
     final resp = utf8.decode(respByteData);
     setState(() {

@@ -184,7 +184,7 @@ class _CentralPageState extends State<CentralPage> {
     setState(() {
       dataList.add('write: $test');
     });
-    final respByteData = await _cMgr.write(byteData);
+    final respByteData = await _cMgr.writeWithResponse(byteData);
 
     final resp = utf8.decode(respByteData);
     setState(() {

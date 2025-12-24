@@ -34,7 +34,7 @@ class AppBluetoothProtocol {
   }
 
   ///带返回写入，用于带返回请求
-  Future<List<int>> write({
+  Future<List<int>> writeWithResponse({
     required List<int> data,
     required int maxPacketSize,
     required Function(List<int> packet) onWrite,
