@@ -99,6 +99,22 @@ class AppBluetoothPeripheralManager {
     );
   }
 
+  ///应答错误，需要请求的消息序号
+  Future<void> respondError(List<int> data, int messageIndex) async {
+    final pMgr = peripheralManager;
+
+    final packetSize = await pMgr.maxPayloadSize;
+    await _appProtocol.writeWithoutResponse(
+      data: data,
+      maxPacketSize: packetSize,
+      opFlag: AppBluetoothProtocol.opFlagError,
+      messageIndex: messageIndex,
+      onWrite: (packet) async {
+        await pMgr.notify(packet);
+      },
+    );
+  }
+
   ///接收数据
   void _receiveValue(List<int> data) {
     _appProtocol.receive(

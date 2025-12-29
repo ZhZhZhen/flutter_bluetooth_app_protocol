@@ -148,7 +148,7 @@ class AppBluetoothProtocol {
               final respCompleter =
                   _respCompleterByMsgIndex[packets.messageIndex];
               if (respCompleter != null && !respCompleter.isCompleted) {
-                respCompleter.completeError(Exception('error'));
+                respCompleter.completeError(Exception(packets));
               }
               break;
             }

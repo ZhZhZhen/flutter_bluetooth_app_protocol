@@ -5,7 +5,7 @@ import 'package:bluetooth_p/util/system_info_util.dart';
 import 'package:flutter/foundation.dart';
 
 import 'bluetooth_constant.dart';
-import 'bluetooth_manager_utils.dart';
+import 'bluetooth_manager_util.dart';
 
 ///封装蓝牙外围设备的功能，仅支持单设备连接
 class BluetoothPeripheralManager {
@@ -197,27 +197,26 @@ class BluetoothPeripheralManager {
     _centralConnectSubs = peripheralMgr.connectionStateChanged.listen((event) {
       final connectState = event.state;
       final central = event.central;
-      final connectedCentral = this.connectedCentral;
-      //只允许最先连接的设备进行判定
-      if (connectState == ConnectionState.connected) {
-        if (connectedCentral != null) return;
-        _connectedCentralController.add(central);
-      } else {
-        if (connectedCentral != central) return;
-        _connectedCentralController.add(null);
+      //当既为外围设备和中心设备时，这里会收到所有对向设备的连接信息（包括中心设备，外围设备）
+      //所以不能准确作为中心设备的连接判断，只用于断连判断
+      if (connectState == ConnectionState.disconnected) {
+        if (connectedCentral == central) {
+          _connectedCentralController.add(null);
+        }
       }
     });
     //写入监听
     final writeUuid = UUID.fromString(BluetoothConstant.writeCharUuid);
     _charWriteSubs?.cancel();
     _charWriteSubs = peripheralMgr.characteristicWriteRequested.listen((
-      event,
-    ) async {
+        event,
+        ) async {
+      final central = event.central;
       final characteristic = event.characteristic;
       final request = event.request;
       final value = request.value;
 
-      if (characteristic.uuid == writeUuid) {
+      if (characteristic.uuid == writeUuid && central == connectedCentral) {
         _receiveController.add(value);
       }
 
@@ -227,16 +226,23 @@ class BluetoothPeripheralManager {
     final notifyUuid = UUID.fromString(BluetoothConstant.notifyCharUuid);
     _notifyStateSubs?.cancel();
     _notifyStateSubs = peripheralMgr.characteristicNotifyStateChanged.listen((
-      event,
-    ) {
+        event,
+        ) {
       final notifyState = event.state;
       final central = event.central;
       final notifyChar = event.characteristic;
-      if (central == connectedCentral && notifyChar.uuid == notifyUuid) {
-        if (notifyState) {
-          _notifyChar = notifyChar;
-        } else {
-          _notifyChar = null;
+
+      if (notifyChar.uuid == notifyUuid) {
+        //只记录率先建立连接的设备
+        if (connectedCentral == null) {
+          _connectedCentralController.add(central);
+        }
+        if (central == connectedCentral) {
+          if (notifyState) {
+            _notifyChar = notifyChar;
+          } else {
+            _notifyChar = null;
+          }
         }
       }
     });
