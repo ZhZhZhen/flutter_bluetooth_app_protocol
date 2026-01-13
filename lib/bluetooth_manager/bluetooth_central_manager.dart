@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:bluetooth_p/bluetooth_manager/bluetooth_constant.dart';
 import 'package:bluetooth_p/bluetooth_manager/bluetooth_manager_util.dart';
@@ -47,7 +48,7 @@ class BluetoothCentralManager {
   int get maxPayloadSize {
     final device = connectedDevice;
     if (device == null) return -1;
-    return device.mtuNow - 3;
+    return min(device.mtuNow - 3, 512);
   }
 
   Future<bool> requestPermission() async {
